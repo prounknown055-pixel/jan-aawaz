@@ -9,9 +9,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    env:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,11 +20,6 @@ jobs:
 
       - name: Install EAS CLI
         run: npm install -g eas-cli
-
-      - name: Check Login
-        run: eas whoami
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Install packages
         run: npm install
@@ -42,10 +34,10 @@ jobs:
           echo "EXPO_PUBLIC_GEMINI_KEY=${{ secrets.EXPO_PUBLIC_GEMINI_KEY }}" >> .env
           echo "EXPO_PUBLIC_ADMIN_EMAIL=prounknown055@gmail.com" >> .env
 
-      - name: Build APK
-        run: eas build --platform android --profile preview --non-interactive
+      - name: Build APK on EAS
+        run: eas build --platform android --profile preview --no-wait
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Done
-        run: echo "APK ban raha hai expo.dev par dekho"
+        run: echo "✅ Build submit ho gayi - expo.dev/builds par dekho"
