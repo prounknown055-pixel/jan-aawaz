@@ -1,17 +1,15 @@
-name: Get Fingerprint
+name: Generate Keystore
 
 on:
   workflow_dispatch:
 
 jobs:
-  fingerprint:
+  generate:
     runs-on: ubuntu-latest
     steps:
-      - name: Install Java
-        run: sudo apt-get install -y openjdk-17-jdk
-
-      - name: Generate Keystore
+      - name: Generate Keystore File
         run: |
+          sudo apt-get install -y openjdk-17-jdk
           keytool -genkey -v \
             -keystore jan-aawaz.keystore \
             -alias jan-aawaz \
@@ -21,15 +19,13 @@ jobs:
             -dname "CN=Jan Aawaz, OU=App, O=JanAawaz, L=Delhi, S=Delhi, C=IN" \
             -storepass janaawaz123 \
             -keypass janaawaz123
+          echo "SHA1:"
+          keytool -list -v \
+            -keystore jan-aawaz.keystore \
+            -storepass janaawaz123 | grep "SHA1:"
 
-      - name: Get SHA1 Fingerprint
-        run: |
-          keytool -keystore jan-aawaz.keystore \
-            -list -v \
-            -storepass janaawaz123
-
-      - name: Upload Keystore
+      - name: Upload as Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: keystore-file
+          name: jan-aawaz-keystore
           path: jan-aawaz.keystore
