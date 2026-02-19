@@ -41,7 +41,7 @@ jobs:
 
       - name: ⚡ CHECK EXACT JS ERROR
         run: |
-          echo "=== CHECKING JS BUNDLE ==="
+          echo "=== FINDING EXACT ERROR ==="
           npx expo export --platform android 2>&1
         continue-on-error: true
 
