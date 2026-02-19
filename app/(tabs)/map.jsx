@@ -1,16 +1,13 @@
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, TextInput, Modal, Alert,
-  Animated, Dimensions, ActivityIndicator
+  ScrollView, Animated, ActivityIndicator
 } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
-import MapView, { Marker, Callout, Circle } from 'react-native-maps';
+import { WebView } from 'react-native-webview';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { playTap } from '../../lib/sounds';
-
-const { width, height } = Dimensions.get('window');
 
 const CATEGORY_COLORS = {
   roads: '#F59E0B', water: '#3B82F6', electricity: '#EAB308',
@@ -27,37 +24,26 @@ const CATEGORY_ICONS = {
 
 export default function MapScreen() {
   const router = useRouter();
-  const mapRef = useRef(null);
+  const webviewRef = useRef(null);
   const [problems, setProblems] = useState([]);
   const [leaders, setLeaders] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedProblem, setSelectedProblem] = useState(null);
-  const [filterModal, setFilterModal] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
-  const [mapStats, setMapStats] = useState({ total: 0, trending: 0, resolved: 0 });
-  const [searchQuery, setSearchQuery] = useState('');
+  const [mapStats, setMapStats] = useState({ total: 0, trending: 0 });
   const slideAnim = useRef(new Animated.Value(300)).current;
 
-  useEffect(() => {
-    initMap();
-  }, []);
-
-  useEffect(() => {
-    loadProblems();
-  }, [activeFilter]);
+  useEffect(() => { initMap(); }, []);
+  useEffect(() => { loadProblems(); }, [activeFilter]);
 
   const initMap = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status === 'granted') {
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced
+      });
       setUserLocation(loc.coords);
-      mapRef.current?.animateToRegion({
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      }, 1000);
     }
     await loadProblems();
     await loadLeaders();
@@ -67,28 +53,24 @@ export default function MapScreen() {
   const loadProblems = async () => {
     let query = supabase
       .from('problems')
-      .select('id, title, category, latitude, longitude, upvote_count, is_trending, is_anonymous, area_name, district, state, created_at')
+      .select('id,title,category,latitude,longitude,upvote_count,is_trending,area_name,district,state')
       .eq('is_removed', false)
-      .not('latitude', 'is', null);
+      .not('latitude', 'is', null)
+      .not('longitude', 'is', null);
 
-    if (activeFilter !== 'all') {
-      query = query.eq('category', activeFilter);
-    }
-
+    if (activeFilter !== 'all') query = query.eq('category', activeFilter);
     const { data } = await query.limit(200);
     setProblems(data || []);
-
     setMapStats({
       total: data?.length || 0,
       trending: data?.filter(p => p.is_trending).length || 0,
-      resolved: 0,
     });
   };
 
   const loadLeaders = async () => {
     const { data } = await supabase
       .from('users')
-      .select('id, name, leader_type, leader_lat, leader_lng, leader_area, leader_badge_color, leader_verified')
+      .select('id,name,leader_type,leader_lat,leader_lng,leader_area,leader_badge_color')
       .eq('role', 'leader')
       .eq('leader_verified', true)
       .not('leader_lat', 'is', null);
@@ -109,28 +91,6 @@ export default function MapScreen() {
     }).start(() => setSelectedProblem(null));
   };
 
-  const goToMyLocation = async () => {
-    await playTap();
-    if (userLocation) {
-      mapRef.current?.animateToRegion({
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-        latitudeDelta: 0.02,
-        longitudeDelta: 0.02,
-      }, 1000);
-    }
-  };
-
-  const goToIndia = async () => {
-    await playTap();
-    mapRef.current?.animateToRegion({
-      latitude: 20.5937,
-      longitude: 78.9629,
-      latitudeDelta: 20,
-      longitudeDelta: 20,
-    }, 1000);
-  };
-
   const filters = [
     { key: 'all', label: '🌐 Sab' },
     { key: 'roads', label: '🛣️ Sadak' },
@@ -142,6 +102,159 @@ export default function MapScreen() {
     { key: 'health', label: '🏥 Swasthya' },
   ];
 
+  const getMapHTML = () => {
+    const centerLat = userLocation?.latitude || 20.5937;
+    const centerLng = userLocation?.longitude || 78.9629;
+    const zoom = userLocation ? 12 : 5;
+
+    const problemMarkers = problems.map(p => {
+      const color = CATEGORY_COLORS[p.category] || '#94A3B8';
+      const icon = CATEGORY_ICONS[p.category] || '📌';
+      const title = (p.title || '').replace(/'/g, "\\'").replace(/`/g, '\\`');
+      const loc = [p.district, p.state].filter(Boolean).join(', ');
+      const radius = p.is_trending ? 12 : 8;
+      return `
+        L.circleMarker([${p.latitude}, ${p.longitude}], {
+          radius: ${radius},
+          fillColor: '${color}',
+          color: '${p.is_trending ? '#FF6B35' : '#ffffff'}',
+          weight: ${p.is_trending ? 3 : 2},
+          opacity: 1,
+          fillOpacity: 0.9
+        }).addTo(map)
+        .on('click', function() {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'problem',
+            id: '${p.id}',
+            title: '${title}',
+            category: '${p.category}',
+            upvotes: ${p.upvote_count || 0},
+            trending: ${p.is_trending || false},
+            location: '${loc}'
+          }));
+        })
+        .bindTooltip('${icon} ${title}', {
+          permanent: false, direction: 'top'
+        });
+      `;
+    }).join('\n');
+
+    const leaderMarkers = leaders.map(l => {
+      const color = l.leader_badge_color || '#FF6B35';
+      const name = (l.name || '').replace(/'/g, "\\'");
+      return `
+        L.marker([${l.leader_lat}, ${l.leader_lng}], {
+          icon: L.divIcon({
+            html: '<div style="background:${color};width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid white;font-size:18px;box-shadow:0 2px 8px rgba(0,0,0,0.4)">👑</div>',
+            iconSize: [36, 36],
+            iconAnchor: [18, 18],
+            className: ''
+          })
+        }).addTo(map)
+        .on('click', function() {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'leader',
+            id: '${l.id}'
+          }));
+        })
+        .bindTooltip('${name} (${l.leader_type || 'Leader'})', {
+          permanent: false, direction: 'top'
+        });
+
+        L.circle([${l.leader_lat}, ${l.leader_lng}], {
+          radius: 50000,
+          fillColor: '${color}',
+          fillOpacity: 0.05,
+          color: '${color}',
+          weight: 1,
+          opacity: 0.3
+        }).addTo(map);
+      `;
+    }).join('\n');
+
+    const userMarker = userLocation ? `
+      L.circleMarker([${userLocation.latitude}, ${userLocation.longitude}], {
+        radius: 10,
+        fillColor: '#3B82F6',
+        color: '#ffffff',
+        weight: 3,
+        fillOpacity: 1
+      }).addTo(map).bindTooltip('📍 Aap Yahan Hain', { permanent: false });
+    ` : '';
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          html, body { width: 100%; height: 100%; background: #0F172A; }
+          #map { width: 100%; height: 100%; }
+          .leaflet-popup-content-wrapper {
+            background: #1E293B !important;
+            color: #F1F5F9 !important;
+            border: 1px solid #334155;
+            border-radius: 12px;
+          }
+          .leaflet-popup-tip { background: #1E293B !important; }
+          .leaflet-tooltip {
+            background: #1E293B;
+            color: #F1F5F9;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            font-size: 12px;
+          }
+          .leaflet-control-zoom a {
+            background: #1E293B !important;
+            color: #F1F5F9 !important;
+            border-color: #334155 !important;
+          }
+        </style>
+      </head>
+      <body>
+        <div id="map"></div>
+        <script>
+          var map = L.map('map', {
+            center: [${centerLat}, ${centerLng}],
+            zoom: ${zoom},
+            zoomControl: true,
+            attributionControl: false
+          });
+
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+          }).addTo(map);
+
+          ${userMarker}
+          ${problemMarkers}
+          ${leaderMarkers}
+
+          map.on('click', function() {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mapclick' }));
+          });
+        </script>
+      </body>
+      </html>
+    `;
+  };
+
+  const handleWebViewMessage = (event) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'problem') {
+        showProblemDetail(data);
+      } else if (data.type === 'leader') {
+        router.push(`/leader/${data.id}`);
+      } else if (data.type === 'mapclick') {
+        if (selectedProblem) hideProblemDetail();
+      }
+    } catch (e) {}
+  };
+
   return (
     <View style={styles.container}>
       {loading && (
@@ -151,66 +264,18 @@ export default function MapScreen() {
         </View>
       )}
 
-      <MapView
-        ref={mapRef}
+      <WebView
+        ref={webviewRef}
+        source={{ html: getMapHTML() }}
         style={styles.map}
-        initialRegion={{
-          latitude: 20.5937,
-          longitude: 78.9629,
-          latitudeDelta: 20,
-          longitudeDelta: 20,
-        }}
-        showsUserLocation={true}
-        showsMyLocationButton={false}
-        mapType="standard"
-      >
-        {problems.map(problem => (
-          <Marker
-            key={problem.id}
-            coordinate={{ latitude: problem.latitude, longitude: problem.longitude }}
-            onPress={async () => { await playTap(); showProblemDetail(problem); }}
-          >
-            <View style={[
-              styles.mapMarker,
-              { backgroundColor: CATEGORY_COLORS[problem.category] || '#94A3B8' },
-              problem.is_trending && styles.mapMarkerTrending,
-            ]}>
-              <Text style={styles.mapMarkerIcon}>
-                {CATEGORY_ICONS[problem.category] || '📌'}
-              </Text>
-              {problem.upvote_count > 0 && (
-                <View style={styles.upvoteBadge}>
-                  <Text style={styles.upvoteBadgeText}>{problem.upvote_count}</Text>
-                </View>
-              )}
-            </View>
-          </Marker>
-        ))}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        onMessage={handleWebViewMessage}
+        onLoad={() => setLoading(false)}
+        startInLoadingState={false}
+      />
 
-        {leaders.map(leader => (
-          <Marker
-            key={leader.id}
-            coordinate={{ latitude: leader.leader_lat, longitude: leader.leader_lng }}
-            onPress={async () => {
-              await playTap();
-              router.push(`/leader/${leader.id}`);
-            }}
-          >
-            <View style={[styles.leaderMarker, { borderColor: leader.leader_badge_color || '#FF6B35' }]}>
-              <Text style={styles.leaderMarkerIcon}>👑</Text>
-            </View>
-            <Circle
-              center={{ latitude: leader.leader_lat, longitude: leader.leader_lng }}
-              radius={50000}
-              fillColor={`${leader.leader_badge_color || '#FF6B35'}15`}
-              strokeColor={`${leader.leader_badge_color || '#FF6B35'}40`}
-              strokeWidth={1}
-            />
-          </Marker>
-        ))}
-      </MapView>
-
-      {/* Top Stats Bar */}
+      {/* Stats Bar */}
       <View style={styles.statsBar}>
         <View style={styles.statItem}>
           <Text style={styles.statNum}>{mapStats.total}</Text>
@@ -223,19 +288,26 @@ export default function MapScreen() {
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={[styles.statNum, { color: '#10B981' }]}>{leaders.length}</Text>
+          <Text style={[styles.statNum, { color: '#F59E0B' }]}>{leaders.length}</Text>
           <Text style={styles.statLabel}>Leaders</Text>
         </View>
       </View>
 
       {/* Filter Chips */}
       <View style={styles.filterContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterScroll}
+        >
           {filters.map(f => (
             <TouchableOpacity
               key={f.key}
               style={[styles.filterChip, activeFilter === f.key && styles.filterChipActive]}
-              onPress={async () => { await playTap(); setActiveFilter(f.key); }}
+              onPress={async () => {
+                await playTap();
+                setActiveFilter(f.key);
+              }}
               activeOpacity={0.8}
             >
               <Text style={[styles.filterChipText, activeFilter === f.key && styles.filterChipTextActive]}>
@@ -248,15 +320,40 @@ export default function MapScreen() {
 
       {/* Map Controls */}
       <View style={styles.mapControls}>
-        <TouchableOpacity style={styles.mapControlBtn} onPress={goToMyLocation}>
+        <TouchableOpacity
+          style={styles.mapControlBtn}
+          onPress={async () => {
+            await playTap();
+            if (userLocation && webviewRef.current) {
+              webviewRef.current.injectJavaScript(`
+                map.setView([${userLocation.latitude}, ${userLocation.longitude}], 14);
+                true;
+              `);
+            }
+          }}
+        >
           <Text style={styles.mapControlIcon}>📍</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.mapControlBtn} onPress={goToIndia}>
+
+        <TouchableOpacity
+          style={styles.mapControlBtn}
+          onPress={async () => {
+            await playTap();
+            webviewRef.current?.injectJavaScript(`
+              map.setView([20.5937, 78.9629], 5);
+              true;
+            `);
+          }}
+        >
           <Text style={styles.mapControlIcon}>🇮🇳</Text>
         </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.mapControlBtn, styles.addProblemMapBtn]}
-          onPress={async () => { await playTap(); router.push('/problem/add'); }}
+          onPress={async () => {
+            await playTap();
+            router.push('/problem/add');
+          }}
         >
           <Text style={styles.mapControlIcon}>➕</Text>
         </TouchableOpacity>
@@ -265,14 +362,16 @@ export default function MapScreen() {
       {/* Legend */}
       <View style={styles.legend}>
         <Text style={styles.legendTitle}>Legend</Text>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#EF4444' }]} />
-          <Text style={styles.legendText}>Bhrashtachar</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#3B82F6' }]} />
-          <Text style={styles.legendText}>Paani</Text>
-        </View>
+        {[
+          { color: '#EF4444', label: 'Bhrashtachar' },
+          { color: '#3B82F6', label: 'Paani' },
+          { color: '#F59E0B', label: 'Sadak' },
+        ].map(item => (
+          <View key={item.label} style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+            <Text style={styles.legendText}>{item.label}</Text>
+          </View>
+        ))}
         <View style={styles.legendItem}>
           <View style={styles.leaderLegendDot} />
           <Text style={styles.legendText}>Leader</Text>
@@ -284,21 +383,25 @@ export default function MapScreen() {
         <Animated.View style={[styles.detailSheet, { transform: [{ translateY: slideAnim }] }]}>
           <View style={styles.detailHandle} />
           <View style={styles.detailHeader}>
-            <View style={[styles.detailCatBadge, { backgroundColor: CATEGORY_COLORS[selectedProblem.category] + '30' }]}>
-              <Text style={[styles.detailCatText, { color: CATEGORY_COLORS[selectedProblem.category] }]}>
+            <View style={[styles.detailCatBadge, {
+              backgroundColor: (CATEGORY_COLORS[selectedProblem.category] || '#94A3B8') + '30'
+            }]}>
+              <Text style={[styles.detailCatText, {
+                color: CATEGORY_COLORS[selectedProblem.category] || '#94A3B8'
+              }]}>
                 {CATEGORY_ICONS[selectedProblem.category]} {selectedProblem.category}
               </Text>
             </View>
-            {selectedProblem.is_trending && (
+            {selectedProblem.trending && (
               <Text style={styles.trendingTag}>🔥 Trending</Text>
             )}
           </View>
           <Text style={styles.detailTitle}>{selectedProblem.title}</Text>
           <Text style={styles.detailLocation}>
-            📍 {[selectedProblem.area_name, selectedProblem.district, selectedProblem.state].filter(Boolean).join(', ')}
+            📍 {selectedProblem.location || 'Location N/A'}
           </Text>
           <View style={styles.detailActions}>
-            <Text style={styles.detailUpvotes}>👍 {selectedProblem.upvote_count || 0} upvotes</Text>
+            <Text style={styles.detailUpvotes}>👍 {selectedProblem.upvotes || 0} upvotes</Text>
             <View style={styles.detailBtns}>
               <TouchableOpacity
                 style={styles.detailViewBtn}
@@ -331,7 +434,7 @@ const styles = StyleSheet.create({
   loadingText: { color: '#94A3B8', marginTop: 12, fontSize: 14 },
   statsBar: {
     position: 'absolute', top: 56, left: 16, right: 16,
-    backgroundColor: '#1E293Bee', borderRadius: 16, flexDirection: 'row',
+    backgroundColor: '#1E293BEE', borderRadius: 16, flexDirection: 'row',
     padding: 12, alignItems: 'center', justifyContent: 'space-around',
     borderWidth: 1, borderColor: '#334155',
   },
@@ -339,30 +442,29 @@ const styles = StyleSheet.create({
   statNum: { fontSize: 18, fontWeight: '900', color: '#F1F5F9' },
   statLabel: { fontSize: 10, color: '#64748B' },
   statDivider: { width: 1, height: 30, backgroundColor: '#334155' },
-  filterContainer: { position: 'absolute', top: 140, left: 0, right: 0 },
+  filterContainer: { position: 'absolute', top: 136, left: 0, right: 0 },
   filterScroll: { paddingHorizontal: 16, gap: 8 },
   filterChip: {
-    backgroundColor: '#1E293Bee', borderRadius: 20, paddingHorizontal: 14,
-    paddingVertical: 8, borderWidth: 1, borderColor: '#334155',
+    backgroundColor: '#1E293BEE', borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderWidth: 1, borderColor: '#334155',
   },
   filterChipActive: { backgroundColor: '#FF6B35', borderColor: '#FF6B35' },
   filterChipText: { fontSize: 12, color: '#94A3B8', fontWeight: '600' },
   filterChipTextActive: { color: '#fff' },
   mapControls: {
-    position: 'absolute', right: 16, bottom: 200,
-    gap: 10,
+    position: 'absolute', right: 16, bottom: 200, gap: 10,
   },
   mapControlBtn: {
     backgroundColor: '#1E293B', width: 48, height: 48, borderRadius: 24,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: '#334155',
-    shadowColor: '#000', shadowOpacity: 0.3, shadowOffset: { width: 0, height: 4 }, elevation: 4,
+    borderWidth: 1, borderColor: '#334155', elevation: 4,
   },
   addProblemMapBtn: { backgroundColor: '#FF6B35', borderColor: '#FF6B35' },
   mapControlIcon: { fontSize: 20 },
   legend: {
     position: 'absolute', left: 16, bottom: 200,
-    backgroundColor: '#1E293Bee', borderRadius: 12, padding: 10,
+    backgroundColor: '#1E293BEE', borderRadius: 12, padding: 10,
     borderWidth: 1, borderColor: '#334155',
   },
   legendTitle: { fontSize: 10, color: '#64748B', fontWeight: '700', marginBottom: 6 },
@@ -373,30 +475,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF6B3520', borderWidth: 2, borderColor: '#FF6B35',
   },
   legendText: { fontSize: 10, color: '#94A3B8' },
-  mapMarker: {
-    width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: '#fff',
-    shadowColor: '#000', shadowOpacity: 0.3, shadowOffset: { width: 0, height: 2 }, elevation: 4,
-  },
-  mapMarkerTrending: { borderColor: '#FF6B35', width: 42, height: 42, borderRadius: 21 },
-  mapMarkerIcon: { fontSize: 16 },
-  upvoteBadge: {
-    position: 'absolute', top: -6, right: -6,
-    backgroundColor: '#FF6B35', borderRadius: 8, paddingHorizontal: 4, paddingVertical: 1,
-  },
-  upvoteBadgeText: { fontSize: 9, color: '#fff', fontWeight: '700' },
-  leaderMarker: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: '#1E293B', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 3,
-  },
-  leaderMarkerIcon: { fontSize: 22 },
   detailSheet: {
     position: 'absolute', bottom: 65, left: 16, right: 16,
     backgroundColor: '#1E293B', borderRadius: 20, padding: 20,
-    borderWidth: 1, borderColor: '#334155',
-    shadowColor: '#000', shadowOpacity: 0.5, shadowOffset: { width: 0, height: -4 }, elevation: 10,
+    borderWidth: 1, borderColor: '#334155', elevation: 10,
   },
   detailHandle: {
     width: 40, height: 4, backgroundColor: '#334155',
