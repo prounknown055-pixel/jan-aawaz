@@ -1,16 +1,17 @@
-name: Generate Keystore
+name: Get Fingerprint
 
 on:
   workflow_dispatch:
 
 jobs:
-  generate:
+  fingerprint:
     runs-on: ubuntu-latest
-
     steps:
+      - name: Install Java
+        run: sudo apt-get install -y openjdk-17-jdk
+
       - name: Generate Keystore
         run: |
-          sudo apt-get install -y openjdk-17-jdk
           keytool -genkey -v \
             -keystore jan-aawaz.keystore \
             -alias jan-aawaz \
@@ -21,21 +22,14 @@ jobs:
             -storepass janaawaz123 \
             -keypass janaawaz123
 
-      - name: Convert to Base64
+      - name: Get SHA1 Fingerprint
         run: |
-          base64 jan-aawaz.keystore > keystore-base64.txt
-          echo "=== KEYSTORE BASE64 ==="
-          cat keystore-base64.txt
-          echo "=== SHA1 FINGERPRINT ==="
-          keytool -list -v \
-            -keystore jan-aawaz.keystore \
-            -alias jan-aawaz \
-            -storepass janaawaz123 | grep SHA1
+          keytool -keystore jan-aawaz.keystore \
+            -list -v \
+            -storepass janaawaz123
 
       - name: Upload Keystore
         uses: actions/upload-artifact@v4
         with:
-          name: android-keystore
-          path: |
-            jan-aawaz.keystore
-            keystore-base64.txt
+          name: keystore-file
+          path: jan-aawaz.keystore
