@@ -1,31 +1,49 @@
-name: Generate Keystore
+name: Build Jan Aawaz APK
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  generate:
+  build:
     runs-on: ubuntu-latest
-    steps:
-      - name: Generate Keystore File
-        run: |
-          sudo apt-get install -y openjdk-17-jdk
-          keytool -genkey -v \
-            -keystore jan-aawaz.keystore \
-            -alias jan-aawaz \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=Jan Aawaz, OU=App, O=JanAawaz, L=Delhi, S=Delhi, C=IN" \
-            -storepass janaawaz123 \
-            -keypass janaawaz123
-          echo "SHA1:"
-          keytool -list -v \
-            -keystore jan-aawaz.keystore \
-            -storepass janaawaz123 | grep "SHA1:"
 
-      - name: Upload as Artifact
-        uses: actions/upload-artifact@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
         with:
-          name: jan-aawaz-keystore
-          path: jan-aawaz.keystore
+          node-version: '20'
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Check Expo Login
+        run: eas whoami
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install packages
+        run: npm install
+
+      - name: Create env file
+        run: |
+          echo "EXPO_PUBLIC_SUPABASE_URL=${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}" >> .env
+          echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}" >> .env
+          echo "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}" >> .env
+          echo "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=${{ secrets.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID }}" >> .env
+          echo "EXPO_PUBLIC_GOOGLE_MAPS_KEY=${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_KEY }}" >> .env
+          echo "EXPO_PUBLIC_GEMINI_KEY=${{ secrets.EXPO_PUBLIC_GEMINI_KEY }}" >> .env
+          echo "EXPO_PUBLIC_ADMIN_EMAIL=${{ secrets.EXPO_PUBLIC_ADMIN_EMAIL }}" >> .env
+
+      - name: Build APK
+        run: eas build --platform android --profile preview --non-interactive --no-wait
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_NO_VCS: 1
+
+      - name: Done
+        run: echo "✅ Build submit ho gayi - expo.dev/builds par check karo"
