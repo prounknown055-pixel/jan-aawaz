@@ -42,7 +42,7 @@ jobs:
       - name: ⚡ CHECK EXACT JS ERROR
         run: |
           echo "=== FINDING EXACT ERROR ==="
-          npx expo export --platform android 2>&1
+          npx expo export --platform android 2>&1 | grep -E "SyntaxError|error:|Transform error|Cannot find|at (/home" | head -30
         continue-on-error: true
 
       - name: Build APK
