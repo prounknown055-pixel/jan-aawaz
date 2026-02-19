@@ -28,7 +28,7 @@ export default function RootLayout() {
     const fallback = setTimeout(() => {
       setAppReady(true);
       router.replace('/login');
-    }, 4000);
+    }, 2000);
 
     try {
       const { data: settings } = await supabase
