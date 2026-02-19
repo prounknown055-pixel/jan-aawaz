@@ -30,9 +30,22 @@
     "plugins": [
       "expo-router",
       [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.501851319502-g7okcl7nui3bhpqn72egu9r03uii36l3"
+        }
+      ],
+      [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Jan Aawaz ko aapki location chahiye map par problems dikhane ke liye."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/logo.png",
+          "color": "#FF6B35"
         }
       ]
     ],
@@ -40,7 +53,12 @@
     "extra": {
       "eas": {
         "projectId": "e283492a-8642-4c3c-93c6-6686c9bf8c67"
+      },
+      "router": {
+        "origin": false
       }
-    }
+    },
+    "sdkVersion": "51.0.0",
+    "platforms": ["ios", "android"]
   }
 }
