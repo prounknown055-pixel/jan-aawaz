@@ -7,7 +7,6 @@ import { View, Text, StyleSheet, AppState } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { configureGoogleSignin } from '../lib/auth';
-import { loadSounds, unloadSounds } from '../lib/sounds';
 
 export default function RootLayout() {
   const [appReady, setAppReady] = useState(false);
@@ -20,17 +19,12 @@ export default function RootLayout() {
       if (state === 'active') supabase.auth.startAutoRefresh();
       else supabase.auth.stopAutoRefresh();
     });
-    return () => {
-      sub.remove();
-      unloadSounds();
-    };
+    return () => sub.remove();
   }, []);
 
   const initApp = async () => {
     try { configureGoogleSignin(); } catch (e) {}
-    try { await loadSounds(); } catch (e) {}
 
-    // 4 second timeout — guaranteed login page
     const fallback = setTimeout(() => {
       setAppReady(true);
       router.replace('/login');
