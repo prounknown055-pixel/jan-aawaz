@@ -18,10 +18,16 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Install EAS CLI
         run: npm install -g eas-cli
 
-      - name: Check Expo Login
+      - name: Check Login
         run: eas whoami
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -46,4 +52,4 @@ jobs:
           EAS_NO_VCS: 1
 
       - name: Done
-        run: echo "✅ Build submit ho gayi - expo.dev/builds par check karo"
+        run: echo "✅ expo.dev/builds par check karo"
