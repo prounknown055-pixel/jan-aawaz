@@ -25,8 +25,7 @@
         "WRITE_EXTERNAL_STORAGE",
         "RECORD_AUDIO",
         "VIBRATE"
-      ],
-      "googleServicesFile": "./google-services.json"
+      ]
     },
     "plugins": [
       "expo-router",
