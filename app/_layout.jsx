@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, AppState } from 'react-native';
+import { View, Text, StyleSheet, AppState, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { configureGoogleSignin } from '../lib/auth';
@@ -12,9 +12,26 @@ export default function RootLayout() {
   const [appReady, setAppReady] = useState(false);
   const [maintenance, setMaintenance] = useState(false);
   const router = useRouter();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.85)).current;
 
   useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 900,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 40,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
     initApp();
+
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') supabase.auth.startAutoRefresh();
       else supabase.auth.stopAutoRefresh();
@@ -77,9 +94,15 @@ export default function RootLayout() {
   if (!appReady) {
     return (
       <View style={styles.splash}>
-        <Text style={styles.flag}>🇮🇳</Text>
-        <Text style={styles.title}>Jan Aawaz</Text>
-        <Text style={styles.sub}>Awaaz Uthao, Badlaav Lao</Text>
+        <Animated.View style={{
+          opacity: fadeAnim,
+          transform: [{ scale: scaleAnim }],
+          alignItems: 'center',
+        }}>
+          <Text style={styles.flag}>🇮🇳</Text>
+          <Text style={styles.title}>Jan Aawaz</Text>
+          <Text style={styles.sub}>Awaaz Uthao, Badlaav Lao</Text>
+        </Animated.View>
       </View>
     );
   }
@@ -132,12 +155,24 @@ export default function RootLayout() {
 
 const styles = StyleSheet.create({
   splash: {
-    flex: 1, backgroundColor: '#0F172A',
-    alignItems: 'center', justifyContent: 'center',
+    flex: 1,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  flag: { fontSize: 72, marginBottom: 20 },
-  title: { fontSize: 38, fontWeight: '900', color: '#FF6B35', marginBottom: 8 },
-  sub: { fontSize: 16, color: '#64748B' },
+  flag: { fontSize: 80, marginBottom: 20 },
+  title: {
+    fontSize: 42,
+    fontWeight: '900',
+    color: '#FF6B35',
+    marginBottom: 8,
+    letterSpacing: 1,
+  },
+  sub: {
+    fontSize: 16,
+    color: '#64748B',
+    letterSpacing: 0.5,
+  },
   maintenance: {
     flex: 1, backgroundColor: '#0F172A',
     alignItems: 'center', justifyContent: 'center', padding: 32,
