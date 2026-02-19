@@ -1,4 +1,4 @@
-name: Build Jan Aawaz APK
+name: Debug Jan Aawaz Errors
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  debug:
     runs-on: ubuntu-latest
 
     steps:
@@ -17,14 +17,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Install EAS CLI
-        run: npm install -g eas-cli
-
-      - name: Check Login
-        run: eas whoami
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Install packages
         run: npm install
@@ -39,17 +31,19 @@ jobs:
           echo "EXPO_PUBLIC_GEMINI_KEY=${{ secrets.EXPO_PUBLIC_GEMINI_KEY }}" >> .env
           echo "EXPO_PUBLIC_ADMIN_EMAIL=${{ secrets.EXPO_PUBLIC_ADMIN_EMAIL }}" >> .env
 
-      - name: ⚡ CHECK EXACT JS ERROR
+      - name: FIND EXACT ERROR
         run: |
-          echo "=== FINDING EXACT ERROR ==="
-          npx expo export --platform android 2>&1 | grep -E "SyntaxError|error:|Transform error|Cannot find|at (/home" | head -30
+          echo "=============================="
+          echo "CHECKING ALL FILES FOR ERRORS"
+          echo "=============================="
+          npx react-native-bundle-visualizer 2>&1 || true
+          npx expo export --platform android --output-dir /tmp/export-out 2>&1
         continue-on-error: true
 
-      - name: Build APK
-        run: eas build --platform android --profile preview --non-interactive --no-wait
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EAS_NO_VCS: 1
-
-      - name: Done
-        run: echo "✅ expo.dev/builds par check karo"
+      - name: SHOW FULL ERROR LOG
+        run: |
+          echo "=============================="
+          echo "METRO BUNDLER FULL LOG"
+          echo "=============================="
+          npx expo export --platform android --output-dir /tmp/out2 2>&1 | grep -v "^$" | grep -v "warn" | grep -v "info"
+        continue-on-error: true
