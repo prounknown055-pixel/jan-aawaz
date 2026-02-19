@@ -1,4 +1,182 @@
-placeholderTextColor="#475569"
+import {
+  View, Text, StyleSheet, TouchableOpacity,
+  FlatList, TextInput, RefreshControl, ActivityIndicator
+} from 'react-native';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'expo-router';
+import { supabase } from '../../lib/supabase';
+import { playTap } from '../../lib/sounds';
+
+export default function ProtestsScreen() {
+  const router = useRouter();
+  const [protests, setProtests] = useState([]);
+  const [filteredProtests, setFilteredProtests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('all');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [fee, setFee] = useState(100000);
+
+  useEffect(() => { init(); }, []);
+  useEffect(() => { filterProtests(); }, [protests, activeTab, searchQuery]);
+
+  const init = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      const { data: user } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+      setCurrentUser(user);
+    }
+    const { data: settings } = await supabase
+      .from('app_settings')
+      .select('protest_creation_fee')
+      .single();
+    if (settings) setFee(settings.protest_creation_fee);
+    await loadProtests();
+  };
+
+  const loadProtests = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('protest_groups')
+      .select('*')
+      .eq('is_active', true)
+      .order('member_count', { ascending: false })
+      .limit(100);
+    setProtests(data || []);
+    setLoading(false);
+  };
+
+  const filterProtests = async () => {
+    let filtered = [...protests];
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(p =>
+        p.title?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    if (activeTab === 'mine' && currentUser) {
+      filtered = filtered.filter(p => p.created_by === currentUser.id);
+    } else if (activeTab === 'joined' && currentUser) {
+      const { data: members } = await supabase
+        .from('protest_members')
+        .select('protest_id')
+        .eq('user_id', currentUser.id);
+      const ids = members?.map(m => m.protest_id) || [];
+      filtered = filtered.filter(p => ids.includes(p.id));
+    }
+    setFilteredProtests(filtered);
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadProtests();
+    setRefreshing(false);
+  };
+
+  const handleCreateProtest = async () => {
+    await playTap();
+    router.push('/protest/create');
+  };
+
+  const PROTEST_EMOJIS = {
+    corruption: '💰', roads: '🛣️', water: '💧', electricity: '⚡',
+    women_safety: '🛡️', health: '🏥', education: '📚', crime: '🚨',
+    political: '🏛️', general: '✊', other: '✊',
+  };
+
+  const renderProtest = ({ item }) => (
+    <TouchableOpacity
+      style={styles.protestCard}
+      onPress={async () => {
+        await playTap();
+        router.push(`/protest/${item.id}`);
+      }}
+      activeOpacity={0.85}
+    >
+      <View style={styles.protestHeader}>
+        <View style={styles.protestTypeRow}>
+          <Text style={styles.protestEmoji}>
+            {PROTEST_EMOJIS[item.category] || '✊'}
+          </Text>
+          {item.is_admin_created && (
+            <View style={styles.adminBadge}>
+              <Text style={styles.adminBadgeText}>⚡ Official</Text>
+            </View>
+          )}
+          {item.payment_verified && (
+            <View style={styles.verifiedBadge}>
+              <Text style={styles.verifiedBadgeText}>✅ Verified</Text>
+            </View>
+          )}
+        </View>
+        <View style={[styles.statusDot, {
+          backgroundColor: item.is_active ? '#10B981' : '#EF4444'
+        }]} />
+      </View>
+
+      <Text style={styles.protestTitle} numberOfLines={2}>{item.title}</Text>
+
+      {item.description ? (
+        <Text style={styles.protestDesc} numberOfLines={2}>{item.description}</Text>
+      ) : null}
+
+      <View style={styles.protestLocation}>
+        <Text style={styles.locationText}>
+          📍 {[item.district, item.state].filter(Boolean).join(', ') || 'India'}
+        </Text>
+      </View>
+
+      <View style={styles.protestFooter}>
+        <View style={styles.memberCount}>
+          <Text style={styles.memberCountText}>👥 {item.member_count || 0} members</Text>
+        </View>
+        <View style={styles.protestMeta}>
+          {item.is_public_join ? (
+            <Text style={styles.joinTag}>🔓 Open</Text>
+          ) : (
+            <Text style={styles.privateTag}>🔒 Private</Text>
+          )}
+        </View>
+        <TouchableOpacity
+          style={styles.joinBtn}
+          onPress={async () => {
+            await playTap();
+            router.push(`/protest/${item.id}`);
+          }}
+        >
+          <Text style={styles.joinBtnText}>Dekho →</Text>
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  );
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>✊ Andolan</Text>
+          <Text style={styles.headerSub}>{filteredProtests.length} protest groups</Text>
+        </View>
+        <TouchableOpacity style={styles.createBtn} onPress={handleCreateProtest}>
+          <Text style={styles.createBtnText}>+ Banao</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.feeBanner}>
+        <Text style={styles.feeBannerText}>
+          💰 Protest group banane ki fee: ₹{(fee / 100).toLocaleString()}
+        </Text>
+      </View>
+
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Protest dhundho..."
+          placeholderTextColor="#475569"
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
@@ -31,7 +209,13 @@ placeholderTextColor="#475569"
           data={filteredProtests}
           keyExtractor={item => item.id}
           renderItem={renderProtest}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF6B35" />}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#FF6B35"
+            />
+          }
           contentContainerStyle={styles.list}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
