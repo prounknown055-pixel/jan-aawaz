@@ -1,4 +1,4 @@
-name: Debug Jan Aawaz Errors
+name: Build Jan Aawaz APK
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  debug:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -17,6 +17,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Check Login
+        run: eas whoami
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Install packages
         run: npm install
@@ -31,19 +45,11 @@ jobs:
           echo "EXPO_PUBLIC_GEMINI_KEY=${{ secrets.EXPO_PUBLIC_GEMINI_KEY }}" >> .env
           echo "EXPO_PUBLIC_ADMIN_EMAIL=${{ secrets.EXPO_PUBLIC_ADMIN_EMAIL }}" >> .env
 
-      - name: FIND EXACT ERROR
-        run: |
-          echo "=============================="
-          echo "CHECKING ALL FILES FOR ERRORS"
-          echo "=============================="
-          npx react-native-bundle-visualizer 2>&1 || true
-          npx expo export --platform android --output-dir /tmp/export-out 2>&1
-        continue-on-error: true
+      - name: Build APK
+        run: eas build --platform android --profile preview --non-interactive --no-wait
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_NO_VCS: 1
 
-      - name: SHOW FULL ERROR LOG
-        run: |
-          echo "=============================="
-          echo "METRO BUNDLER FULL LOG"
-          echo "=============================="
-          npx expo export --platform android --output-dir /tmp/out2 2>&1 | grep -v "^$" | grep -v "warn" | grep -v "info"
-        continue-on-error: true
+      - name: Done
+        run: echo "✅ expo.dev/builds par check karo"
